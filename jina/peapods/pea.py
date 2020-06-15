@@ -16,7 +16,7 @@ from .. import __ready_msg__, __stop_msg__
 from ..drivers.helper import routes2str, add_route
 from ..enums import PeaRoleType
 from ..excepts import NoExplicitMessage, ExecutorFailToLoad, MemoryOverHighWatermark, RequestLoopEnd, \
-    DriverNotInstalled, NoDriverForRequest, DriverError
+    DriverError
 from ..executors import BaseExecutor
 from ..logging import get_logger
 from ..logging.profile import used_memory, TimeDict
@@ -334,9 +334,8 @@ class BasePea(metaclass=PeaMeta):
             self.logger.error(f'can not start a executor from {self.args.yaml_path}')
         except MemoryOverHighWatermark:
             self.logger.error(f'memory usage {used_memory()} GB is above the high-watermark: {self.args.memory_hwm} GB')
-        except DriverError:
-            self.logger.error(f'no matched driver for {self.request_type} request, '
-                              f'this pea is either badly configured or it is not configured to handle {self.request_type} request')
+        except DriverError as ex:
+            self.logger.error(f'driver error: {str(ex)}')
         except KeyboardInterrupt:
             self.logger.warning('user cancel the process')
         except zmq.error.ZMQError:

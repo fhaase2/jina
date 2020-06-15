@@ -4,12 +4,12 @@ __license__ = "Apache-2.0"
 """ This modules defines all kinds of exceptions raised in jina """
 
 
-class MismatchedVersion(OSError):
-    """When the jina version info of the incoming message does not match the local jina version"""
-
-
 class NoExplicitMessage(Exception):
     """Waiting until all partial messages are received"""
+
+
+class MismatchedVersion(OSError):
+    """When the jina version info of the incoming message does not match the local jina version"""
 
 
 class ExecutorFailToLoad(OSError):
@@ -18,10 +18,6 @@ class ExecutorFailToLoad(OSError):
 
 class MemoryOverHighWatermark(OSError):
     """When the memory usage is over the defined high water mark"""
-
-
-class UnknownControlCommand(RuntimeError):
-    """The control command received can not be recognized"""
 
 
 class RequestLoopEnd(OSError):
@@ -46,6 +42,10 @@ class NoDriverForRequest(DriverError):
 
 class UnattachedDriver(DriverError):
     """Driver is not attached to any BasePea or executor"""
+
+
+class UnknownControlCommand(RuntimeError):
+    """The control command received can not be recognized"""
 
 
 class FlowTopologyError(Exception):
@@ -84,16 +84,8 @@ class BadRequestType(Exception):
     """Bad request type and the pod does not know how to handle """
 
 
-class GRPCGatewayError(Exception):
-    """Some bad thing happens in the grpc gateway side"""
-
-
 class GRPCServerError(Exception):
     """Can not connect to the grpc gateway"""
-
-
-class NoIdleDealer(Exception):
-    """All dealers are exhausted no more idle dealer"""
 
 
 class GatewayPartialMessage(Exception):
