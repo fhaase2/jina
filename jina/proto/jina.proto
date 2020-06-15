@@ -184,6 +184,9 @@ message Envelope {
     Status status = 7; // status info
 
     repeated uint32 num_part = 8; // the number of partial messages
+
+    // error message when the Status of the Envelope is ERROR, else NULL
+    string error_message = 9;
 }
 
 /**

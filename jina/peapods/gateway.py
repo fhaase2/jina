@@ -13,7 +13,7 @@ from .pea import BasePea
 from .zmq import AsyncZmqlet, add_envelope
 from .. import __stop_msg__
 from ..enums import ClientMode
-from ..excepts import NoExplicitMessage, RequestLoopEnd, NoDriverForRequest, BadRequestType, GatewayPartialMessage
+from ..excepts import NoExplicitMessage, RequestLoopEnd, NoDriverForRequest, BadRequestType, GatewayPartialMessage, PodRunTimeError
 from ..executors import BaseExecutor
 from ..logging.base import get_logger
 from ..logging.profile import TimeContext
@@ -114,6 +114,14 @@ class GatewayPea:
             try:
                 self._request = getattr(msg.request, msg.request.WhichOneof('body'))
                 self._message = msg
+                # Check if pod had thrown a run-time exception by checking envelope's status and error message
+                if msg.envelope.status == jina_pb2.Envelope.Status.ERROR:
+                    error_message = f'pod threw run time exception {msg.envelope.error_message}'
+                    self.logger.info(error_message)
+                    # extract error message from envelope, remove envelope, send back request and error message
+                    return msg.request, msg.envelope.error_message
+                    # ToDo: Raise PodTimeError if not propagating the message to the client
+                    # raise PodRunTimeError(error_message)
                 if msg.envelope.num_part != [1]:
                     raise GatewayPartialMessage(f'gateway can not handle message with num_part={msg.envelope.num_part}')
                 self.executor(self.request_type)

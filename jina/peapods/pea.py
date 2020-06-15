@@ -148,11 +148,12 @@ class BasePea(metaclass=PeaMeta):
     def handle(self, msg: 'jina_pb2.Message') -> 'BasePea':
         """Register the current message to this pea, so that all message-related properties are up-to-date, including
         :attr:`request`, :attr:`prev_requests`, :attr:`message`, :attr:`prev_messages`. And then call the executor to handle
-        this message.
+        this message if its envelope's  status is not ERROR, else skip handling.
 
         :param msg: the message received
         """
-        self.executor(self.request_type)
+        if msg.envelope.status != jina_pb2.Envelope.Status.ERROR:
+          self.executor(self.request_type)
         return self
 
     @property
@@ -319,24 +320,39 @@ class BasePea(metaclass=PeaMeta):
             self.post_init()
             self.loop_body()
         except RequestLoopEnd:
-            self.logger.info('break from the event loop')
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = 'break from the event loop'
+            self.logger.info(self._message.envelope.error_message)
         except ExecutorFailToLoad:
-            self.logger.error(f'can not start a executor from {self.args.yaml_path}')
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = f'can not start a executor from {self.args.yaml_path}'
+            self.logger.error(self._message.envelope.error_message)
         except MemoryOverHighWatermark:
-            self.logger.error(
-                'memory usage %d GB is above the high-watermark: %d GB' % (used_memory(), self.args.memory_hwm))
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = 'memory usage %d GB is above the high-watermark: %d GB' % (used_memory(), self.args.memory_hwm)
+            self.logger.error(self._message.envelope.error_message)
         except UnknownControlCommand as ex:
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = str(ex)
             self.logger.error(ex, exc_info=True)
         except DriverNotInstalled:
-            self.logger.error('no driver is installed to this pea, this pea will do nothing')
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = 'no driver is installed to this pea, this pea will do nothing'
+            self.logger.error(self._message.envelope.error_message)
         except NoDriverForRequest:
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = f'no matched driver for {self.request_type} request - wrongly configured pea'
             self.logger.error(f'no matched driver for {self.request_type} request, '
                               f'this pea is either badly configured or it is not configured to handle {self.request_type} request')
         except KeyboardInterrupt:
             self.logger.warning('user cancel the process')
         except zmq.error.ZMQError:
-            self.logger.error('zmqlet can not be initiated')
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = 'zmqlet can not be initiated'
+            self.logger.error(self._message.envelope.error_message)
         except Exception as ex:
+            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
+            self._message.envelope.error_message = f'unknown exception: {str(ex)}'
             self.logger.error(f'unknown exception: {str(ex)}', exc_info=True)
         finally:
             self.loop_teardown()
