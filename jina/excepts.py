@@ -4,7 +4,7 @@ __license__ = "Apache-2.0"
 """ This modules defines all kinds of exceptions raised in jina """
 
 
-class MismatchedVersion(Exception):
+class MismatchedVersion(OSError):
     """When the jina version info of the incoming message does not match the local jina version"""
 
 
@@ -12,19 +12,19 @@ class NoExplicitMessage(Exception):
     """Waiting until all partial messages are received"""
 
 
-class ExecutorFailToLoad(Exception):
+class ExecutorFailToLoad(OSError):
     """When the executor can not be loaded in pea/pod"""
 
 
-class MemoryOverHighWatermark(Exception):
+class MemoryOverHighWatermark(OSError):
     """When the memory usage is over the defined high water mark"""
 
 
-class UnknownControlCommand(Exception):
+class UnknownControlCommand(RuntimeError):
     """The control command received can not be recognized"""
 
 
-class RequestLoopEnd(Exception):
+class RequestLoopEnd(OSError):
     """The event loop of BasePea ends"""
 
 
@@ -32,23 +32,19 @@ class PodRunTimeError(Exception):
     """The error propagated by Pods when Executor throws an exception"""
 
 
-class DriverNotInstalled(Exception):
+class DriverError(OSError):
+    """Driver related exceptions"""
+
+
+class DriverNotInstalled(DriverError):
     """Driver is not installed in the BasePea"""
 
 
-class BadDriverGroup(Exception):
-    """Driver group can not be found in the map"""
-
-
-class BadDriverMap(Exception):
-    """The YAML driver map is in a bad format"""
-
-
-class NoDriverForRequest(Exception):
+class NoDriverForRequest(DriverError):
     """No matched driver for this request """
 
 
-class UnattachedDriver(Exception):
+class UnattachedDriver(DriverError):
     """Driver is not attached to any BasePea or executor"""
 
 

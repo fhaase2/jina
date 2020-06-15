@@ -15,9 +15,8 @@ from .zmq import send_ctrl_message, Zmqlet
 from .. import __ready_msg__, __stop_msg__
 from ..drivers.helper import routes2str, add_route
 from ..enums import PeaRoleType
-from ..excepts import NoExplicitMessage, ExecutorFailToLoad, MemoryOverHighWatermark, UnknownControlCommand, \
-    RequestLoopEnd, \
-    DriverNotInstalled, NoDriverForRequest
+from ..excepts import NoExplicitMessage, ExecutorFailToLoad, MemoryOverHighWatermark, RequestLoopEnd, \
+    DriverNotInstalled, NoDriverForRequest, DriverError
 from ..executors import BaseExecutor
 from ..logging import get_logger
 from ..logging.profile import used_memory, TimeDict
@@ -153,7 +152,7 @@ class BasePea(metaclass=PeaMeta):
         :param msg: the message received
         """
         if msg.envelope.status != jina_pb2.Envelope.Status.ERROR:
-          self.executor(self.request_type)
+            self.executor(self.request_type)
         return self
 
     @property
@@ -252,7 +251,6 @@ class BasePea(metaclass=PeaMeta):
     def _callback(self, msg):
         # self.is_busy.set()
         self.pre_hook(msg).handle(msg).post_hook(msg)
-        self.last_active_time = time.perf_counter()
         return msg
 
     def msg_callback(self, msg: 'jina_pb2.Message') -> Optional['jina_pb2.Message']:
@@ -261,12 +259,26 @@ class BasePea(metaclass=PeaMeta):
         When nothing is returned then the nothing is send out via :attr:`zmqlet.sock_out`.
         """
         try:
-            return self._callback(msg)
+            # notice how executor related exceptions are handled here
+            # generally unless executor throws an OSError, the exception are caught and solved inplace
+            msg = self._callback(msg)
+            self.last_active_time = time.perf_counter()
+            self.save_executor(self.args.dump_interval)
+            self.check_memory_watermark()
+            return msg
+        except (OSError, zmq.error.ZMQError, KeyboardInterrupt):
+            # serious error happen in callback, we need to break the event loop
+            raise
         except NoExplicitMessage:
-            # silent and do not propagade message anymore
+            # silent and do not propagate message anymore
             # 1. wait partial message to be finished
             # 2. dealer send a control message and no need to go on
             pass
+        except (RuntimeError, Exception) as ex:
+            # general runtime error and nothing serious, we simply mark the message to error and pass on
+            msg.envelope.status = jina_pb2.Envelope.Status.ERROR
+            msg.envelope.error_message = f'unknown exception: {str(ex)}'
+            return msg
 
     def loop_body(self):
         """The body of the request loop
@@ -288,9 +300,6 @@ class BasePea(metaclass=PeaMeta):
 
             if msg:
                 self.zmqlet.send_message(msg)
-
-                self.save_executor(self.args.dump_interval)
-                self.check_memory_watermark()
                 # self.is_busy.clear()
             # t_loop_end = time.perf_counter()
             # self.logger.info(f'handle {(t_callback - t_loop_start) / (t_loop_end - t_loop_start):2.2f}')
@@ -320,39 +329,22 @@ class BasePea(metaclass=PeaMeta):
             self.post_init()
             self.loop_body()
         except RequestLoopEnd:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = 'break from the event loop'
-            self.logger.info(self._message.envelope.error_message)
+            self.logger.info('break from the event loop')
         except ExecutorFailToLoad:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = f'can not start a executor from {self.args.yaml_path}'
-            self.logger.error(self._message.envelope.error_message)
+            self.logger.error(f'can not start a executor from {self.args.yaml_path}')
         except MemoryOverHighWatermark:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = 'memory usage %d GB is above the high-watermark: %d GB' % (used_memory(), self.args.memory_hwm)
-            self.logger.error(self._message.envelope.error_message)
-        except UnknownControlCommand as ex:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = str(ex)
-            self.logger.error(ex, exc_info=True)
-        except DriverNotInstalled:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = 'no driver is installed to this pea, this pea will do nothing'
-            self.logger.error(self._message.envelope.error_message)
-        except NoDriverForRequest:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = f'no matched driver for {self.request_type} request - wrongly configured pea'
+            self.logger.error(f'memory usage {used_memory()} GB is above the high-watermark: {self.args.memory_hwm} GB')
+        except DriverError:
             self.logger.error(f'no matched driver for {self.request_type} request, '
                               f'this pea is either badly configured or it is not configured to handle {self.request_type} request')
         except KeyboardInterrupt:
             self.logger.warning('user cancel the process')
         except zmq.error.ZMQError:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = 'zmqlet can not be initiated'
-            self.logger.error(self._message.envelope.error_message)
+            self.logger.error('zmqlet can not be initiated')
         except Exception as ex:
-            self._message.envelope.status = jina_pb2.Envelope.Status.ERROR
-            self._message.envelope.error_message = f'unknown exception: {str(ex)}'
+            # this captures the general exception from the following four places:
+            # - self.zmqlet.recv_message
+            # - self.zmqlet.send_message
             self.logger.error(f'unknown exception: {str(ex)}', exc_info=True)
         finally:
             self.loop_teardown()
